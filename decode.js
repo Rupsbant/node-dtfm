@@ -7,16 +7,17 @@ const fftSize = 4096
 analyser.fftSize = fftSize
 analyser.smoothingTimeConstant = 0
 
-navigator.getUserMedia(
-  {audio: true},
+navigator.mediaDevices.getUserMedia({
+  audio: true
+}).then(
   (stream) => {
     source = context.createMediaStreamSource(stream)
-    source.connect(analyser)
-    analyser.connect(distortion)
+    source.connect(distortion)
     distortion.connect(biquadFilter)
-    biquadFilter.connect(gainNode)
-    gainNode.connect(context.destination)
-    setInterval(analyse, 1000)
+    biquadFilter.connect(analyser)
+    //gainNode.connect(analyser)
+    //gainNode.connect(context.destination)
+    setInterval(analyse, 200)
   }, console.error)
 
 const keys = []
@@ -62,19 +63,64 @@ const pads = [
 notes.forEach((note) => {
   keys.push(Math.round(note / (44100 / fftSize)))
 })
+console.log(keys);
 
-function analyse () {
-  let count = 0
-  let data = new Uint8Array(analyser.frequencyBinCount)
-  let coeff = null
-  analyser.getByteFrequencyData(data)
-
-  for(let i = 0; i < analyser.frequencyBinCount; ++i) {
-    if (keys.indexOf(i) !== -1 && data[i] > 150) {
-      if (coeff === null) coeff = 0
-      count += 1
-      coeff += coeffs[keys.indexOf(i)]
+function analyse() {
+  function append(char) {
+    let div = document.getElementById('dtmf');
+    if (char == undefined &&  div.innerHTML.slice(-1) != ' ') {
+      div.innerHTML += ' ';
+    } else if (char != undefined && char != div.innerHTML.slice(-1)) {
+      div.innerHTML += char;
     }
   }
-  if (coeff !== null && count === 2) console.log(pads[coeff])
+
+  function average(data, len) {
+    let avg = 0;
+    for (let i = 0; i < len; i++) {
+      avg += data[i]
+    }
+    return avg / len
+  }
+
+  function max2(data, len) {
+    let m1 = 0;
+    let m2 = 0;
+    let mp1 = -1;
+    let mp2 = -1;
+    for (let i = 0; i < len; i++) {
+      if (data[i] > m1) {
+        m2 = m1;
+        mp2 = mp1;
+        m1 = data[i];
+        mp1 = i
+      } else if (data[i] > m2) {
+        m2 = data[i]
+        mp2 = i
+      }
+    }
+    return {
+      m1: m1,
+      m2: m2,
+      mp1: mp1,
+      mp2: mp2
+    }
+  }
+
+  let count = 0
+  let len = analyser.frequencyBinCount;
+  let data = new Uint8Array(len)
+  analyser.getByteFrequencyData(data)
+  let tones = [];
+  keys.forEach((pos) => {
+    tones.push(data[pos])
+  })
+  let max = max2(tones, 8);
+  let avg = average(tones, 8);
+  if (max.m2 > 100) {
+    let coeff = coeffs[max.mp1] + coeffs[max.mp2];
+    append(pads[coeff])
+  } else {
+    append(undefined)
+  }
 }

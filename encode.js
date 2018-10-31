@@ -1,5 +1,12 @@
-window.encode = (val) => {
+window.encode = (val, callback, time) => {
+  time = time || 500;
   if (window.__pushed__) return
+  setTimeout(function() {
+    window.__pushed__ = false
+    if(callback) {
+      callback();
+    }
+  }, time)
 
   const context = window.__context__ || new AudioContext()
   const sampleRate = 8000
@@ -27,12 +34,11 @@ window.encode = (val) => {
   }
   if (!keymaps[val]) return
 
-  for (let i = 0; i < 0.5 * sampleRate; i++) {
+  for (let i = 0; i < time * sampleRate / 1000; i++) {
     data[i] = Math.sin((2 * Math.PI) * keymaps[val][0] * (i / sampleRate))
-  }
-
-  for (let i = 0; i < 0.5 * sampleRate; i++) {
-    data1[i] = Math.sin((2 * Math.PI) * keymaps[val][1] * (i / sampleRate))
+    data[i] += Math.sin((2 * Math.PI) * keymaps[val][1] * (i / sampleRate))
+    data[i] *= 0.5;
+    data1[i] = data[i];
   }
 
   const gainNode = context.createGain()
@@ -44,8 +50,79 @@ window.encode = (val) => {
   src.start(currentTime)
 
   window.__pushed__ = true
-  setTimeout(() => {
-    window.__pushed__ = false
-  }, 500)
   if (!window.__context__) window.__context__ = context
+}
+
+
+function execute(phone_number) {
+  phone_number.push('*');
+  phone_number.push('#');
+  phone_number.push(' ');
+  //phone_number.push(' ');
+  //phone_number.push(' ');
+  var result = Promise.resolve();
+  phone_number.forEach(char => {
+    result = result.then(function() {
+      return new Promise((resolve, reject) => {
+          encode(char, resolve, 400);
+      })
+    }).then(function() {
+      return new Promise((resolve, reject) => {
+          encode(' ', resolve, 410);
+      })
+    })
+  });
+  return result;
+}
+
+let state = [10,5,0];
+let idx = 0;
+let set = [0,1,2,3,4,5,6,7,8,9,'A','B','C','D'];
+let setlen = set.length;
+let pauze = false;
+
+function next() {
+  idx++;
+  document.getElementById("index").innerHTML = idx;
+  let p = state.length -1;
+  state[p] += 1;
+  while(state[p] >= setlen) {
+    state[p] = 0;
+    p--;
+    if(p < 0){
+      return undefined;
+    }
+    state[p] += 1;
+  }
+  return state;
+}
+
+async function run() {
+  pauze = false;
+  while(state != undefined && !pauze) {
+    await execute(state.map(idx => set[idx]));
+    await execute(state.map(idx => set[idx]));
+    next();
+  }
+}
+window.run = run;
+window.reset = () => {
+  state = [10,5,0];
+  idx = 0;
+}
+window.repeat = async () => {
+  pauze = false;
+  while(state != undefined && !pauze) {
+    await execute(state.map(idx => set[idx]));
+  }
+}
+window.halt = () => {
+  pauze = true;
+}
+window.skip = () => {
+  let skip = +document.getElementById("skip").value;
+  console.log(skip);
+  for(let i = 0; i < skip; i++) {
+    next();
+  }
 }
